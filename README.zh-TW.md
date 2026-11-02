@@ -89,8 +89,8 @@ UUID：`brow@jettakarn`。
 # 安裝
 
 ```sh
-git clone https://github.com/jettakarn/brow.git
-cd brow
+git clone https://github.com/jettakarn/brow-gnome-extension.git
+cd brow-gnome-extension
 mkdir -p ~/.local/share/gnome-shell/extensions
 ln -sfn "$(pwd)" ~/.local/share/gnome-shell/extensions/brow@jettakarn
 glib-compile-schemas ~/.local/share/gnome-shell/extensions/brow@jettakarn/schemas
