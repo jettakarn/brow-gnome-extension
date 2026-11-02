@@ -1532,8 +1532,9 @@ export default class BrowExtension extends Extension {
             return;
         if (!this._settings?.get_boolean('fingerprint-island'))
             return;
-        if (this._isHowdyAuth)
-            return;
+        // sudo falls through from Howdy to fprintd while the face result is still on screen.
+        if (this._isHowdyAuth || this._howdyResolvePending)
+            this._endHowdyAuth({ update: false });
 
         this._prepareTransientHudChrome();
         this._fingerprintSuccessPending = false;
@@ -1710,7 +1711,7 @@ export default class BrowExtension extends Extension {
         this._armHowdyHold(2000);
     }
 
-    _endHowdyAuth() {
+    _endHowdyAuth({ update = true } = {}) {
         if (!this._isHowdyAuth && !this._howdyResolvePending)
             return;
         this._clearHowdyHoldTimeout();
@@ -1718,6 +1719,8 @@ export default class BrowExtension extends Extension {
         this._isHowdyAuth = false;
         this._howdyUi?.hide();
         this._hudQueue?.dismiss(HudKind.AUTH);
+        if (!update)
+            return;
         this._animTarget = null;
         this._updateIslandView();
     }
