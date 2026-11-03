@@ -47,15 +47,5 @@
       <summary>Low battery threshold</summary>
       <description>Show the low-battery banner when charge drops to this percentage or below while on battery (15, 20, or 25)</description>
     </key>
-    <key name="fingerprint-island" type="b">
-      <default>true</default>
-      <summary>Fingerprint auth island</summary>
-      <description>Experimental: morph the island during fprintd verification</description>
-    </key>
-    <key name="howdy-island" type="b">
-      <default>true</default>
-      <summary>Howdy face-unlock island</summary>
-      <description>Experimental: morph the island while pam_howdy is authenticating. The extension only watches the journal.</description>
-    </key>
   </schema>
 </schemalist>

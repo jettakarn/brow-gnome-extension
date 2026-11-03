@@ -23,13 +23,6 @@ import {
     VOLUME_HUD_MS,
     VOLUME_HUD_WIDTH,
     LOW_BATTERY_PCT,
-    EXPERIMENTAL_FINGERPRINT,
-    AUTH_SQUARE_SIZE,
-    AUTH_SUCCESS_HOLD_MS,
-    AUTH_SHAKE_MS,
-    HOWDY_OPEN_SIZE,
-    HOWDY_HOLD_MS,
-    HOWDY_RESULT_TAIL_MS,
 } from './lib/constants.js';
 import { createHttpGet, startWeatherPolling, formatTemperature } from './lib/weather.js';
 import { MediaController } from './lib/media.js';
@@ -37,10 +30,6 @@ import { buildSettingsTab, syncSettingsUi, setSettingsControlsReactive, scrollSe
 import { buildBatteryBanner } from './lib/batteryBannerUi.js';
 import { buildVolumeHud } from './lib/volumeHudUi.js';
 import { createHudQueue, HudKind } from './lib/hudQueue.js';
-import { FingerprintAuthMonitor } from './lib/fingerprintAuth.js';
-import { buildFingerprintUi } from './lib/fingerprintUi.js';
-import { HowdyAuthMonitor } from './lib/howdyAuth.js';
-import { buildHowdyUi } from './lib/howdyUi.js';
 import {
     buildShortcutsTab,
     rebuildShortcuts,
@@ -110,17 +99,6 @@ export default class BrowExtension extends Extension {
         this._prevPct = null;
         this._lowBatteryArmed = true;
         this._batteryStateSignalId = null;
-        this._isFingerprintAuth = false;
-        this._fingerprintSuccessPending = false;
-        this._fingerprintHoldTimeout = null;
-        this._fingerprintMonitor = null;
-        this._fingerprintUi = null;
-        this._isHowdyAuth = false;
-        this._howdyResolvePending = false;
-        this._howdyHoldTimeout = null;
-        this._howdyMonitor = null;
-        this._howdyUi = null;
-        this._shieldSignalId = null;
 
         // Hit area: side + bottom pad only (no top pad — peninsula flush to screen edge)
         this._hitArea = new St.Widget({
@@ -250,19 +228,11 @@ export default class BrowExtension extends Extension {
         });
         this._volumeHudContainer = this._volumeHud.box;
 
-        this._fingerprintUi = buildFingerprintUi();
-        this._fingerprintContainer = this._fingerprintUi.root;
-
-        this._howdyUi = buildHowdyUi(GLib.build_filenamev([this.path, 'media', 'howdy']));
-        this._howdyContainer = this._howdyUi.root;
-
         this._stack.add_child(this._quickContainer);
         this._stack.add_child(this._mediaQuickContainer);
         this._stack.add_child(this._largeContainer);
         this._stack.add_child(this._batteryBannerContainer);
         this._stack.add_child(this._volumeHudContainer);
-        this._stack.add_child(this._fingerprintContainer);
-        this._stack.add_child(this._howdyContainer);
 
         Main.layoutManager.uiGroup.add_child(this._hitArea);
 
@@ -275,8 +245,6 @@ export default class BrowExtension extends Extension {
         this._setupGestures();
         this._setupSettingsBindings();
         this._setupAutoCollapse();
-        this._setupFingerprintAuth();
-        this._setupHowdyAuth();
         this._updateWeatherLabel();
         syncSettingsUi(this);
         this._setExpandedTabPickable(false);
@@ -401,7 +369,7 @@ export default class BrowExtension extends Extension {
         if (next === this._initialHeight)
             return;
         this._initialHeight = next;
-        if (this._island && !this._isExpanded && !this._isFingerprintAuth && !this._isHowdyAuth)
+        if (this._island && !this._isExpanded)
             this._updateIslandView();
     }
 
@@ -455,14 +423,6 @@ export default class BrowExtension extends Extension {
             syncSettingsUi(this);
             this._rearmLowBattery();
         });
-        bind('fingerprint-island', () => {
-            syncSettingsUi(this);
-            this._applyFingerprintSetting();
-        });
-        bind('howdy-island', () => {
-            syncSettingsUi(this);
-            this._applyHowdySetting();
-        });
     }
 
     _lowBatteryThreshold() {
@@ -481,24 +441,6 @@ export default class BrowExtension extends Extension {
             return;
         const pct = this._displayDevice.percentage;
         this._lowBatteryArmed = pct > this._lowBatteryThreshold();
-    }
-
-    _applyFingerprintSetting() {
-        const want = EXPERIMENTAL_FINGERPRINT &&
-            !!this._settings?.get_boolean('fingerprint-island');
-
-        if (want) {
-            if (!this._fingerprintMonitor)
-                this._setupFingerprintAuth();
-            return;
-        }
-
-        this._endFingerprintAuth();
-        if (this._fingerprintMonitor) {
-            this._fingerprintMonitor.stop();
-            this._fingerprintMonitor = null;
-        }
-        this._releaseShieldWatch();
     }
 
     _collapseExpanded() {
@@ -633,7 +575,7 @@ export default class BrowExtension extends Extension {
 
             if (!this._isExpanded || !this._autoCollapseEnabled())
                 return Clutter.EVENT_PROPAGATE;
-            if (this._isFingerprintAuth || this._isHowdyAuth || this._isBatteryBanner || this._isVolumeHud)
+            if (this._isBatteryBanner || this._isVolumeHud)
                 return Clutter.EVENT_PROPAGATE;
 
             const type = event.type();
@@ -746,7 +688,7 @@ export default class BrowExtension extends Extension {
     _onArrowTab(event) {
         if (!this._isExpanded || !this._hitArea?.hover)
             return Clutter.EVENT_PROPAGATE;
-        if (this._isFingerprintAuth || this._isHowdyAuth || this._isBatteryBanner || this._isVolumeHud)
+        if (this._isBatteryBanner || this._isVolumeHud)
             return Clutter.EVENT_PROPAGATE;
 
         const key = event.get_key_symbol();
@@ -898,7 +840,7 @@ export default class BrowExtension extends Extension {
         this._topMargin = topMargin;
 
         this._hitArea.connect('notify::hover', () => {
-            if (!this._island || this._isBatteryBanner || this._isVolumeHud || this._isFingerprintAuth || this._isHowdyAuth)
+            if (!this._island || this._isBatteryBanner || this._isVolumeHud)
                 return;
 
             if (this._hitArea.hover) {
@@ -938,7 +880,7 @@ export default class BrowExtension extends Extension {
         this._island.connect('button-release-event', () => {
             if (!this._island)
                 return Clutter.EVENT_STOP;
-            if (this._isBatteryBanner || this._isVolumeHud || this._isFingerprintAuth || this._isHowdyAuth)
+            if (this._isBatteryBanner || this._isVolumeHud)
                 return Clutter.EVENT_STOP;
             this._isExpanded = !this._isExpanded;
             if (this._isExpanded) {
@@ -1018,38 +960,7 @@ export default class BrowExtension extends Extension {
         if (!this._island)
             return;
 
-        let targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, authOp, volumeOp, howdyOp;
-
-        if (this._isFingerprintAuth) {
-            targetWidth = AUTH_SQUARE_SIZE;
-            targetHeight = AUTH_SQUARE_SIZE;
-            quickOp = 0;
-            mediaOp = 0;
-            largeOp = 0;
-            bannerOp = 0;
-            volumeOp = 0;
-            authOp = 255;
-            howdyOp = 0;
-            this._animateTo(targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, authOp, volumeOp, howdyOp);
-            return;
-        }
-
-        if (this._isHowdyAuth) {
-            targetWidth = HOWDY_OPEN_SIZE;
-            targetHeight = HOWDY_OPEN_SIZE;
-            quickOp = 0;
-            mediaOp = 0;
-            largeOp = 0;
-            bannerOp = 0;
-            volumeOp = 0;
-            authOp = 0;
-            howdyOp = 255;
-            this._animateTo(targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, authOp, volumeOp, howdyOp);
-            return;
-        }
-
-        authOp = 0;
-        howdyOp = 0;
+        let targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, volumeOp;
 
         if (this._isVolumeHud) {
             targetWidth = VOLUME_HUD_WIDTH;
@@ -1059,7 +970,7 @@ export default class BrowExtension extends Extension {
             largeOp = 0;
             bannerOp = 0;
             volumeOp = 255;
-            this._animateTo(targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, authOp, volumeOp);
+            this._animateTo(targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, volumeOp);
             return;
         }
 
@@ -1072,7 +983,7 @@ export default class BrowExtension extends Extension {
             mediaOp = 0;
             largeOp = 0;
             bannerOp = 255;
-            this._animateTo(targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, authOp, volumeOp);
+            this._animateTo(targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, volumeOp);
             return;
         }
 
@@ -1115,10 +1026,10 @@ export default class BrowExtension extends Extension {
             }
         }
 
-        this._animateTo(targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, authOp, volumeOp);
+        this._animateTo(targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, volumeOp);
     }
 
-    _animateTo(targetWidth, targetHeight, quickOpacity, mediaOpacity, largeOpacity, bannerOpacity = 0, authOpacity = 0, volumeOpacity = 0, howdyOpacity = 0) {
+    _animateTo(targetWidth, targetHeight, quickOpacity, mediaOpacity, largeOpacity, bannerOpacity = 0, volumeOpacity = 0) {
         if (!this._island || !this._hitArea)
             return;
 
@@ -1133,9 +1044,7 @@ export default class BrowExtension extends Extension {
             mediaOpacity,
             largeOpacity,
             bannerOpacity,
-            authOpacity,
             volumeOpacity,
-            howdyOpacity,
             topMargin: this._topMargin,
             centerX: this._centerX,
             originY: this._originY,
@@ -1147,9 +1056,7 @@ export default class BrowExtension extends Extension {
             this._animTarget.mediaOpacity === next.mediaOpacity &&
             this._animTarget.largeOpacity === next.largeOpacity &&
             this._animTarget.bannerOpacity === next.bannerOpacity &&
-            this._animTarget.authOpacity === next.authOpacity &&
             this._animTarget.volumeOpacity === next.volumeOpacity &&
-            this._animTarget.howdyOpacity === next.howdyOpacity &&
             this._animTarget.topMargin === next.topMargin &&
             this._animTarget.centerX === next.centerX &&
             this._animTarget.originY === next.originY) {
@@ -1215,32 +1122,6 @@ export default class BrowExtension extends Extension {
             }
         }
 
-        if (this._fingerprintContainer) {
-            if (authOpacity === 0) {
-                this._fingerprintContainer.remove_all_transitions();
-                this._fingerprintContainer.opacity = 0;
-            } else {
-                this._fingerprintContainer.ease({
-                    opacity: authOpacity,
-                    duration: 200,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                });
-            }
-        }
-
-        if (this._howdyContainer) {
-            if (howdyOpacity === 0) {
-                this._howdyContainer.remove_all_transitions();
-                this._howdyContainer.opacity = 0;
-            } else {
-                this._howdyContainer.ease({
-                    opacity: howdyOpacity,
-                    duration: 350,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUINT,
-                });
-            }
-        }
-
         if (this._volumeHudContainer) {
             if (volumeOpacity === 0) {
                 this._volumeHudContainer.remove_all_transitions();
@@ -1300,10 +1181,6 @@ export default class BrowExtension extends Extension {
             }
         }
 
-        // AUTH morph is owned by fingerprint begin/end; queue only gates volume/battery.
-        if (active === HudKind.AUTH)
-            return;
-
         this._animTarget = null;
         this._updateIslandView();
     }
@@ -1316,8 +1193,6 @@ export default class BrowExtension extends Extension {
 
     _showBatteryBanner(kind) {
         if (!this._island || !this._displayDevice)
-            return;
-        if (this._isFingerprintAuth || this._isHowdyAuth)
             return;
         if (!this._settings?.get_boolean('show-battery-banners'))
             return;
@@ -1444,8 +1319,6 @@ export default class BrowExtension extends Extension {
     _showVolumeHud() {
         if (!this._island)
             return;
-        if (this._isFingerprintAuth || this._isHowdyAuth)
-            return;
         if (!this._settings?.get_boolean('show-volume-hud'))
             return;
 
@@ -1540,268 +1413,6 @@ export default class BrowExtension extends Extension {
         this._prevPct = pct;
     }
 
-    _clearFingerprintHoldTimeout() {
-        if (this._fingerprintHoldTimeout) {
-            GLib.source_remove(this._fingerprintHoldTimeout);
-            this._fingerprintHoldTimeout = null;
-        }
-    }
-
-    _setupFingerprintAuth() {
-        if (!EXPERIMENTAL_FINGERPRINT)
-            return;
-        if (!this._settings?.get_boolean('fingerprint-island'))
-            return;
-        if (this._fingerprintMonitor)
-            return;
-
-        this._fingerprintMonitor = new FingerprintAuthMonitor({
-            onStart: () => this._beginFingerprintAuth(),
-            onRetry: () => {
-                if (this._isFingerprintAuth)
-                    this._fingerprintUi?.showScanning();
-            },
-            onSuccess: () => this._onFingerprintSuccess(),
-            onFail: () => this._onFingerprintFail(),
-            onEnd: () => {
-                if (this._isFingerprintAuth && !this._fingerprintSuccessPending)
-                    this._endFingerprintAuth();
-            },
-        });
-        this._fingerprintMonitor.start();
-        this._ensureShieldWatch();
-    }
-
-    _ensureShieldWatch() {
-        if (this._shieldSignalId)
-            return;
-        try {
-            if (!Main.screenShield)
-                return;
-            this._shieldSignalId = Main.screenShield.connect('active-changed', () => {
-                if (Main.screenShield.active)
-                    return;
-                if (this._isFingerprintAuth && !this._fingerprintSuccessPending)
-                    this._endFingerprintAuth();
-                if (this._isHowdyAuth && !this._howdyResolvePending)
-                    this._endHowdyAuth();
-            });
-        } catch (e) {
-            // ScreenShield may be unavailable
-        }
-    }
-
-    _releaseShieldWatch() {
-        if (this._fingerprintMonitor || this._howdyMonitor)
-            return;
-        if (!(this._shieldSignalId && Main.screenShield))
-            return;
-        try {
-            Main.screenShield.disconnect(this._shieldSignalId);
-        } catch (e) {
-            // ignore
-        }
-        this._shieldSignalId = null;
-    }
-
-    _beginFingerprintAuth() {
-        if (!this._island)
-            return;
-        if (!this._settings?.get_boolean('fingerprint-island'))
-            return;
-        // sudo falls through from Howdy to fprintd while the face result is still on screen.
-        if (this._isHowdyAuth || this._howdyResolvePending)
-            this._endHowdyAuth({ update: false });
-
-        this._prepareTransientHudChrome();
-        this._fingerprintSuccessPending = false;
-        this._clearFingerprintHoldTimeout();
-        this._isFingerprintAuth = true;
-        this._fingerprintUi?.showScanning();
-
-        // Auth wins; drop timed HUDs so they don't resume after unlock.
-        this._hudQueue?.dismissTimed();
-        this._hudQueue?.request(HudKind.AUTH, { holdMs: null });
-
-        this._animTarget = null;
-        this._updateIslandView();
-    }
-
-    _onFingerprintSuccess() {
-        if (!this._isFingerprintAuth)
-            return;
-        this._fingerprintSuccessPending = true;
-        this._fingerprintUi?.playSuccess(() => {
-            this._clearFingerprintHoldTimeout();
-            this._fingerprintHoldTimeout = GLib.timeout_add(
-                GLib.PRIORITY_DEFAULT,
-                AUTH_SUCCESS_HOLD_MS,
-                () => {
-                    this._fingerprintHoldTimeout = null;
-                    this._fingerprintSuccessPending = false;
-                    this._endFingerprintAuth();
-                    return GLib.SOURCE_REMOVE;
-                }
-            );
-        });
-    }
-
-    _onFingerprintFail() {
-        if (!this._isFingerprintAuth)
-            return;
-        this._fingerprintUi?.shake();
-        this._clearFingerprintHoldTimeout();
-        this._fingerprintHoldTimeout = GLib.timeout_add(
-            GLib.PRIORITY_DEFAULT,
-            AUTH_SHAKE_MS + 250,
-            () => {
-                this._fingerprintHoldTimeout = null;
-                if (!this._fingerprintSuccessPending)
-                    this._endFingerprintAuth();
-                return GLib.SOURCE_REMOVE;
-            }
-        );
-    }
-
-    _endFingerprintAuth() {
-        if (!this._isFingerprintAuth && !this._fingerprintSuccessPending)
-            return;
-        this._clearFingerprintHoldTimeout();
-        this._fingerprintSuccessPending = false;
-        this._isFingerprintAuth = false;
-        this._fingerprintUi?.hide();
-        this._hudQueue?.dismiss(HudKind.AUTH);
-        this._animTarget = null;
-        this._updateIslandView();
-    }
-
-    _setupHowdyAuth() {
-        if (!this._settings?.get_boolean('howdy-island'))
-            return;
-        if (this._howdyMonitor)
-            return;
-
-        this._howdyMonitor = new HowdyAuthMonitor({
-            onStart: () => this._beginHowdyAuth(),
-            onSuccess: () => this._onHowdySuccess(),
-            onFail: () => this._onHowdyFail(),
-            onCompareExit: () => this._onHowdyCompareExit(),
-        });
-        this._howdyMonitor.start();
-        this._ensureShieldWatch();
-    }
-
-    _applyHowdySetting() {
-        const want = !!this._settings?.get_boolean('howdy-island');
-        if (want) {
-            if (!this._howdyMonitor)
-                this._setupHowdyAuth();
-            return;
-        }
-
-        this._endHowdyAuth();
-        if (this._howdyMonitor) {
-            this._howdyMonitor.stop();
-            this._howdyMonitor = null;
-        }
-        this._releaseShieldWatch();
-    }
-
-    _clearHowdyHoldTimeout() {
-        if (this._howdyHoldTimeout) {
-            GLib.source_remove(this._howdyHoldTimeout);
-            this._howdyHoldTimeout = null;
-        }
-    }
-
-    _armHowdyHold(ms) {
-        this._clearHowdyHoldTimeout();
-        const hold = ms > 0 ? ms : HOWDY_HOLD_MS;
-        this._howdyHoldTimeout = GLib.timeout_add(
-            GLib.PRIORITY_DEFAULT,
-            hold,
-            () => {
-                this._howdyHoldTimeout = null;
-                this._endHowdyAuth();
-                return GLib.SOURCE_REMOVE;
-            }
-        );
-    }
-
-    _beginHowdyAuth() {
-        if (!this._island)
-            return;
-        if (!this._settings?.get_boolean('howdy-island'))
-            return;
-        if (this._isFingerprintAuth)
-            return;
-        // Camera is still open. Drop the "process exited" grace, keep the still.
-        if (this._isHowdyAuth && !this._howdyResolvePending) {
-            this._clearHowdyHoldTimeout();
-            return;
-        }
-
-        this._prepareTransientHudChrome();
-        this._howdyResolvePending = false;
-        this._clearHowdyHoldTimeout();
-        this._isHowdyAuth = true;
-
-        this._hudQueue?.dismissTimed();
-        this._hudQueue?.request(HudKind.AUTH, { holdMs: null });
-
-        this._animTarget = null;
-        this._updateIslandView();
-        this._howdyUi?.showScanning();
-    }
-
-    _onHowdySuccess() {
-        if (this._howdyResolvePending)
-            return;
-        // This Howdy build logs the outcome without "Attempting facial authentication".
-        if (!this._isHowdyAuth)
-            this._beginHowdyAuth();
-        if (!this._isHowdyAuth)
-            return;
-        this._howdyResolvePending = true;
-        const playMs = this._howdyUi?.playSuccess() ?? 0;
-        this._armHowdyHold((playMs || HOWDY_HOLD_MS) + HOWDY_RESULT_TAIL_MS);
-    }
-
-    _onHowdyFail() {
-        if (this._howdyResolvePending)
-            return;
-        // This Howdy build logs the outcome without "Attempting facial authentication".
-        if (!this._isHowdyAuth)
-            this._beginHowdyAuth();
-        if (!this._isHowdyAuth)
-            return;
-        this._howdyResolvePending = true;
-        const playMs = this._howdyUi?.playFailure() ?? 0;
-        this._armHowdyHold((playMs || HOWDY_HOLD_MS) + HOWDY_RESULT_TAIL_MS);
-    }
-
-    _onHowdyCompareExit() {
-        if (!this._isHowdyAuth || this._howdyResolvePending)
-            return;
-        // compare.py closed. The journal line usually follows immediately.
-        // If it never arrives, fold the island back instead of leaving it up.
-        this._armHowdyHold(2000);
-    }
-
-    _endHowdyAuth({ update = true } = {}) {
-        if (!this._isHowdyAuth && !this._howdyResolvePending)
-            return;
-        this._clearHowdyHoldTimeout();
-        this._howdyResolvePending = false;
-        this._isHowdyAuth = false;
-        this._howdyUi?.hide();
-        this._hudQueue?.dismiss(HudKind.AUTH);
-        if (!update)
-            return;
-        this._animTarget = null;
-        this._updateIslandView();
-    }
-
     _setupClock() {
         this._updateTime();
         this._timeTimeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
@@ -1857,7 +1468,6 @@ export default class BrowExtension extends Extension {
             this._largeContainer,
             this._batteryBannerContainer,
             this._volumeHudContainer,
-            this._fingerprintContainer,
             ...this._allTabs(),
         ];
         for (const actor of actors) {
@@ -1919,33 +1529,6 @@ export default class BrowExtension extends Extension {
         this._hudQueue?.clear();
         this._hudQueue = null;
         this._teardownVolumeMonitor();
-        this._clearFingerprintHoldTimeout();
-        this._endFingerprintAuth();
-        this._clearHowdyHoldTimeout();
-        this._endHowdyAuth();
-
-        if (this._fingerprintMonitor) {
-            this._fingerprintMonitor.stop();
-            this._fingerprintMonitor = null;
-        }
-        this._fingerprintUi?.destroy();
-        this._fingerprintUi = null;
-
-        if (this._howdyMonitor) {
-            this._howdyMonitor.stop();
-            this._howdyMonitor = null;
-        }
-        this._howdyUi?.destroy();
-        this._howdyUi = null;
-
-        if (this._shieldSignalId && Main.screenShield) {
-            try {
-                Main.screenShield.disconnect(this._shieldSignalId);
-            } catch (e) {
-                // ignore
-            }
-            this._shieldSignalId = null;
-        }
 
         if (this._displayDevice) {
             if (this._batterySignalId) {

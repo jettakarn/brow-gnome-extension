@@ -141,67 +141,6 @@
     border: 1px solid rgba(255, 75, 106, 0.55);
 }
 
-/* Experimental fingerprint auth square */
-.brow-auth-root {
-    padding: 0;
-}
-
-.brow-auth-island-edge {
-    border-width: 0 2px 2px 2px;
-    border-style: solid;
-    border-color: #7CFF6B;
-    border-radius: 0 0 28px 28px; /* match .brow-container peninsula */
-    background-color: transparent;
-}
-
-.brow-auth-ring {
-    border: 1.5px solid #7CFF6B;
-    border-radius: 99px;
-    background-color: transparent;
-}
-
-.brow-auth-frame {
-    padding: 0;
-}
-
-.brow-auth-corner {
-    border-color: #7CFF6B;
-    border-style: solid;
-}
-
-.brow-auth-corner-tl {
-    border-width: 2.5px 0 0 2.5px;
-    border-radius: 4px 0 0 0;
-}
-
-.brow-auth-corner-tr {
-    border-width: 2.5px 2.5px 0 0;
-    border-radius: 0 4px 0 0;
-}
-
-.brow-auth-corner-bl {
-    border-width: 0 0 2.5px 2.5px;
-    border-radius: 0 0 0 4px;
-}
-
-.brow-auth-corner-br {
-    border-width: 0 2.5px 2.5px 0;
-    border-radius: 0 0 4px 0;
-}
-
-.brow-auth-finger {
-    color: #7CFF6B;
-}
-
-.brow-auth-check {
-    color: #7CFF6B;
-}
-
-/* Howdy face unlock — Glance scan media fills the peninsula */
-.brow-howdy-root {
-    padding: 0;
-}
-
 /* Quick View Boxes */
 .brow-quick-box {
     padding: 0 16px;
