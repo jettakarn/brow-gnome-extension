@@ -78,6 +78,8 @@ Experimental. When Howdy opens the camera for a facial authentication in this se
 
 Howdy still does the camera check. Brow only watches `pam_howdy` in the system journal. `howdy test` does not go through PAM, so it does not open the island. The GDM greeter is out of scope. If a fingerprint verify is already on screen, Howdy waits.
 
+![Face unlock](previews/face.gif)
+
 # Prerequisites
 
 - GNOME Shell 45 or newer

@@ -78,6 +78,8 @@ UUID：`brow@jettakarn`。
 
 相機與比對仍由 Howdy 負責。Brow 只看系統日誌裡的 `pam_howdy`。`howdy test` 不經過 PAM，所以不會打開島。GDM 登入畫面不在範圍內。若指紋驗證已經佔著島，Howdy 會等它結束。
 
+![人臉解鎖](previews/face.gif)
+
 # 需求
 
 - GNOME Shell 45 或更新版本

@@ -286,6 +286,11 @@ export default class BrowExtension extends Extension {
             'monitors-changed',
             () => this._onMonitorsChanged()
         );
+        this._dateMenu = null;
+        this._dateMenuContainer = null;
+        this._dateMenuVisibleId = 0;
+        this._dateMenuWasVisible = false;
+        this._coverPanelClock();
     }
 
     _syncMonitorGeometry() {
@@ -305,6 +310,78 @@ export default class BrowExtension extends Extension {
             this._dismissShade.set_size(this._monitor.width, this._monitor.height);
         }
         this._updateIslandView();
+        this._coverPanelClock();
+    }
+
+    // The center date menu is the clock plus the notification calendar, and it
+    // is wider than the resting notch. Hide it so the island covers that spot
+    // and clicks no longer open the calendar. Restore it on disable.
+    _coverPanelClock() {
+        const dateMenu = Main.panel?.statusArea?.dateMenu;
+        const container = dateMenu?.container;
+        if (!container)
+            return;
+
+        if (container !== this._dateMenuContainer)
+            this._uncoverPanelClock();
+
+        this._dateMenu = dateMenu;
+        if (container !== this._dateMenuContainer) {
+            this._dateMenuContainer = container;
+            this._dateMenuWasVisible = container.visible;
+        }
+
+        try {
+            dateMenu.menu?.close?.(false);
+        } catch (e) {
+            // ignore
+        }
+
+        if (!this._dateMenuVisibleId) {
+            this._dateMenuVisibleId = container.connect('notify::visible', () => {
+                if (container.visible)
+                    container.hide();
+            });
+        }
+        if (container.visible)
+            container.hide();
+
+        this._raiseIsland();
+    }
+
+    _raiseIsland() {
+        const uiGroup = Main.layoutManager.uiGroup;
+        const panelBox = Main.layoutManager.panelBox;
+        if (!this._hitArea || !uiGroup || this._hitArea.get_parent() !== uiGroup)
+            return;
+        try {
+            uiGroup.set_child_above_sibling(this._hitArea, panelBox ?? null);
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    _uncoverPanelClock() {
+        const container = this._dateMenuContainer;
+        if (this._dateMenuVisibleId && container) {
+            try {
+                container.disconnect(this._dateMenuVisibleId);
+            } catch (e) {
+                // ignore
+            }
+        }
+        this._dateMenuVisibleId = 0;
+
+        if (container && this._dateMenuWasVisible) {
+            try {
+                container.show();
+            } catch (e) {
+                // ignore
+            }
+        }
+        this._dateMenu = null;
+        this._dateMenuContainer = null;
+        this._dateMenuWasVisible = false;
     }
 
     _readPanelHeight() {
@@ -1810,6 +1887,8 @@ export default class BrowExtension extends Extension {
             }
             this._panelHeightId = 0;
         }
+
+        this._uncoverPanelClock();
 
         if (this._stageCaptureId) {
             global.stage.disconnect(this._stageCaptureId);
