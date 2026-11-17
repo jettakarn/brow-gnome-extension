@@ -318,26 +318,12 @@
     background-position: center;
 }
 
-.brow-waveform {
-    spacing: 2px;
+.brow-spectrum {
     padding: 0;
 }
 
-.brow-waveform-quick {
-    spacing: 2px;
-}
-
-.brow-wave-bar {
-    spacing: 0;
-}
-
-.brow-wave-cap {
-    background-color: #FFFFFF;
-    border-radius: 99px;
-}
-
-.brow-wave-mid {
-    background-color: #FFFFFF;
+.brow-spectrum-bar {
+    border-radius: 999px;
 }
 
 .brow-progress-block {

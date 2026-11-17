@@ -36,6 +36,16 @@
       <summary>Show volume HUD</summary>
       <description>Morph the island into a volume bar when system output volume changes</description>
     </key>
+    <key name="show-brightness-hud" type="b">
+      <default>true</default>
+      <summary>Show brightness HUD</summary>
+      <description>Show a brightness bar in the island and hide the Shell's own brightness pop-up</description>
+    </key>
+    <key name="spectrum-source" type="s">
+      <default>'auto'</default>
+      <summary>Spectrum source</summary>
+      <description>'auto' analyses the system output through parec and falls back to a simulation; 'simulated' never captures audio</description>
+    </key>
     <key name="show-battery-banners" type="b">
       <default>true</default>
       <summary>Show battery banners</summary>

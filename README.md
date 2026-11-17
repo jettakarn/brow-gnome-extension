@@ -42,7 +42,11 @@ UUID: `brow@jettakarn`.
 
 The media page is on screen only while something is playing. It shows album art, title, artist, a seekable progress bar, and previous / play-pause / next. The output button opens Sound settings. Click the album art for a tall player, and click it again to return.
 
-While music plays, the closed island shows the cover on the left and a spectrum on the right, tinted from the art.
+While music plays, the closed island shows the cover on the left and a spectrum on the right.
+
+The spectrum is six pill bars, 3 px wide with 2.5 px gaps. Each bar has a vertical gradient taken from the cover (light on top, deep below) and a soft glow. Low to high frequencies run left to right. Bars rise fast and fall slowly with a light spring, so the motion eases out instead of moving at constant speed. When playback pauses, the bars shrink into a row of dots.
+
+In **Audio** mode, Brow reads the system output (never the microphone) through `parec`, splits it into six bands with a Goertzel filter (about 60, 150, 400 Hz, 1, 2.5, 6 kHz), and smooths them like a Web Audio analyser with a time constant of 0.8. Nothing is saved to disk. If `parec` is missing or gives no data, it falls back to a simulation of layered sines and smooth noise. **Simulated** mode never captures audio.
 
 ![Music](previews/music.gif)
 
@@ -51,6 +55,10 @@ While music plays, the closed island shows the cover on the left and a spectrum 
 A volume bar appears when the system output volume changes. Drag the track to set the level. It holds for about two and a half seconds.
 
 ![Volume](previews/volume.gif)
+
+### Brightness
+
+A brightness bar appears when the brightness keys change the screen brightness, using the same layout as the volume bar (it is read-only). The Shell's own brightness pop-up is hidden while this is on. Keyboard backlight changes are left to the Shell.
 
 ### Battery
 
@@ -76,6 +84,7 @@ Each dot is an application or a website, chosen in the extension preferences. We
 
 - GNOME Shell 45 or newer
 - [`playerctl`](https://github.com/altdesktop/playerctl) for media metadata and controls
+- Optional: `parec` (package `pulseaudio-utils`) for the real audio spectrum
 - Network access for weather (IP geolocation and [Open-Meteo](https://open-meteo.com/)) and for website icons
 
 # Install
@@ -126,6 +135,8 @@ Display, volume, and battery are a tab in the island.
 - **Temperature** is Celsius or Fahrenheit. Celsius is the default.
 - **Clock** is 24-hour or 12-hour.
 - **Volume** shows or hides the volume bar.
+- **Brightness** shows or hides the brightness bar and the Shell's own pop-up.
+- **Spectrum** is Audio (real output analysis, with fallback) or Simulated (no audio capture).
 - **Battery** shows or hides the charging and low-battery banners.
 - **Notifications** shows or hides notification banners in the island.
 - **Low battery** is 15%, 20%, or 25%. The default is 20%. The banner appears once when the level drops to that threshold while discharging, and it resets after charging above it.

@@ -438,6 +438,12 @@ export default class BrowExtension extends Extension {
             if (!this._settings.get_boolean('show-volume-hud'))
                 this._hideVolumeHud();
         });
+        bind('spectrum-source', () => syncSettingsUi(this));
+        bind('show-brightness-hud', () => {
+            syncSettingsUi(this);
+            if (!this._settings.get_boolean('show-brightness-hud'))
+                this._hudQueue?.dismiss(HudKind.BRIGHTNESS);
+        });
         bind('show-battery-banners', () => {
             syncSettingsUi(this);
             if (!this._settings.get_boolean('show-battery-banners'))
@@ -1216,15 +1222,18 @@ export default class BrowExtension extends Extension {
             this._noticeAction = null;
         }
 
-        this._isVolumeHud = active === HudKind.VOLUME;
+        const isBrightness = active === HudKind.BRIGHTNESS;
+        this._isVolumeHud = active === HudKind.VOLUME || isBrightness;
         this._isBatteryBanner = active === HudKind.BATTERY;
 
         if (this._isVolumeHud) {
             const level = payload?.level;
             const muted = payload?.muted;
+            this._volumeHud?.setMode(isBrightness ? 'brightness' : 'volume');
             if (level != null)
                 this._volumeHud?.setLevel(level, !!muted);
-            this._volumeHud?.setReactive(true);
+            // Brightness bar is read-only; the volume bar can be dragged.
+            this._volumeHud?.setReactive(!isBrightness);
         } else if (wasVolume) {
             this._volumeHud?.setReactive(false);
         }
@@ -1261,14 +1270,25 @@ export default class BrowExtension extends Extension {
         const self = this;
         const patched = function (monitorIndex, icon, ...rest) {
             let isVolume = false;
+            let isBrightness = false;
             try {
                 const names = icon?.get_names?.() ?? [];
                 isVolume = names.some(n => n.startsWith('audio-volume'));
+                isBrightness = names.some(n => n.startsWith('display-brightness'));
             } catch (e) {
                 isVolume = false;
+                isBrightness = false;
             }
             if (isVolume && self._island && self._settings?.get_boolean('show-volume-hud'))
                 return;
+            if (isBrightness && self._island && self._settings?.get_boolean('show-brightness-hud')) {
+                const [level, maxLevel] = rest.slice(1);
+                if (typeof level === 'number' && level >= 0) {
+                    const max = typeof maxLevel === 'number' && maxLevel > 0 ? maxLevel : 1;
+                    self._showBrightnessHud(level / max);
+                }
+                return;
+            }
             return original.call(this, monitorIndex, icon, ...rest);
         };
         this._osdOriginalShow = original;
@@ -1552,10 +1572,30 @@ export default class BrowExtension extends Extension {
         this._prepareTransientHudChrome();
 
         const { level, muted } = this._readOutputVolume();
+        this._volumeHud?.setMode('volume');
         this._volumeHud?.setLevel(level, muted);
 
         this._hudQueue?.request(HudKind.VOLUME, {
             payload: { level, muted },
+            holdMs: VOLUME_HUD_MS,
+        });
+    }
+
+    _showBrightnessHud(ratio) {
+        if (!this._island)
+            return;
+        if (!this._settings?.get_boolean('show-brightness-hud'))
+            return;
+
+        this._prepareTransientHudChrome();
+
+        const level = Math.max(0, Math.min(1, ratio));
+        // The queue only notifies when the active HUD changes, so update the
+        // widget directly (same as the volume HUD) for repeated key presses.
+        this._volumeHud?.setMode('brightness');
+        this._volumeHud?.setLevel(level, false);
+        this._hudQueue?.request(HudKind.BRIGHTNESS, {
+            payload: { level, muted: false },
             holdMs: VOLUME_HUD_MS,
         });
     }
