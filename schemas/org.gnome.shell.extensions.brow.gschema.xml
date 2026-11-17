@@ -41,6 +41,11 @@
       <summary>Show battery banners</summary>
       <description>Show charging and low-battery peninsula banners</description>
     </key>
+    <key name="show-notifications" type="b">
+      <default>true</default>
+      <summary>Show notifications in the island</summary>
+      <description>Show a short banner in the island when a desktop notification arrives (respects Do Not Disturb)</description>
+    </key>
     <key name="low-battery-percent" type="i">
       <default>20</default>
       <range min="15" max="25"/>

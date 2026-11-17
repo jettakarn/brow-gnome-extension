@@ -10,5 +10,7 @@
     "49"
   ],
   "settings-schema": "org.gnome.shell.extensions.brow",
-  "url": "https://github.com/jettakarn/brow-gnome-extension"
+  "url": "https://github.com/jettakarn/brow-gnome-extension",
+  "version-name": "0.2.0",
+  "version": 1
 }

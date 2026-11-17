@@ -1,3 +1,16 @@
+/*
+ * Design tokens (St CSS has no variables, so they live here as a contract):
+ *   surface      #000000                    island and tab sheets
+ *   text         #FFFFFF                    primary
+ *   text-dim     rgba(255,255,255,0.6-0.78) secondary
+ *   text-faint   rgba(255,255,255,0.42)     section labels
+ *   chip         rgba(255,255,255,0.12)     idle control, 0.2 on hover
+ *   chip-active  #FFFFFF on #000000         selected control
+ *   radius       bottom 28px island, 10px chip, 6px pill
+ *   type         Inter; 11 label, 12 body, 13-15 title, 30 timer
+ * Motion tokens (durations) are in lib/constants.js as MOTION.
+ */
+
 /* Fonts — Inter for a light, SF-adjacent look */
 @font-face {
     font-family: "Inter";
@@ -35,6 +48,27 @@
 .brow-battery-banner {
     padding: 0 18px;
     spacing: 8px;
+}
+
+/* Notice HUD — notifications and timer events */
+.brow-notice-hud {
+    padding: 0 18px;
+    spacing: 10px;
+}
+
+.brow-notice-hud-icon {
+    color: #FFFFFF;
+}
+
+.brow-notice-hud-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #FFFFFF;
+}
+
+.brow-notice-hud-body {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
 }
 
 /* Volume HUD — Apple-style level bar */
@@ -586,4 +620,43 @@
 .brow-settings-chip-active {
     background-color: #FFFFFF;
     color: #000000;
+}
+
+/* Tools tab — timer and system monitor */
+.brow-tools-tab {
+    padding: 4px 18px 0 18px;
+    background-color: #000000;
+}
+
+.brow-tools-columns {
+    spacing: 18px;
+}
+
+.brow-tools-col {
+    spacing: 6px;
+}
+
+.brow-tools-timer {
+    font-size: 30px;
+    font-weight: 700;
+    color: #FFFFFF;
+}
+
+.brow-tools-hint,
+.brow-tools-stat {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.brow-tools-chips {
+    spacing: 6px;
+}
+
+.brow-notice-hud-title,
+.brow-notice-hud-body,
+.brow-tools-timer,
+.brow-tools-hint,
+.brow-tools-stat {
+    font-family: "Inter", "Adwaita Sans", "Cantarell", sans-serif;
 }

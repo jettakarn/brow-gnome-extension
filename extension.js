@@ -23,12 +23,19 @@ import {
     VOLUME_HUD_MS,
     VOLUME_HUD_WIDTH,
     LOW_BATTERY_PCT,
+    NOTICE_HUD_MS,
+    NOTICE_HUD_WIDTH,
+    NOTICE_HUD_HEIGHT,
+    MOTION,
 } from './lib/constants.js';
 import { createHttpGet, startWeatherPolling, formatTemperature } from './lib/weather.js';
 import { MediaController } from './lib/media.js';
 import { buildSettingsTab, syncSettingsUi, setSettingsControlsReactive, scrollSettingsBy } from './lib/settingsUi.js';
 import { buildBatteryBanner } from './lib/batteryBannerUi.js';
 import { buildVolumeHud } from './lib/volumeHudUi.js';
+import { buildToolsTab, setToolsReactive, syncTimerRing, destroyTools } from './lib/toolsUi.js';
+import { buildNoticeHud } from './lib/noticeHudUi.js';
+import Gio from 'gi://Gio';
 import { createHudQueue, HudKind } from './lib/hudQueue.js';
 import {
     buildShortcutsTab,
@@ -85,6 +92,9 @@ export default class BrowExtension extends Extension {
         this._media = new MediaController(this);
         this._isBatteryBanner = false;
         this._isVolumeHud = false;
+        this._isNoticeHud = false;
+        this._noticeAction = null;
+        this._notifySourceSignals = new Map();
         this._mixer = null;
         this._mixerSignals = [];
         this._sinkSignals = [];
@@ -216,7 +226,11 @@ export default class BrowExtension extends Extension {
         this._largeContentStack.add_child(this._mediaTab);
         this._largeContentStack.add_child(this._searchTab);
         this._largeContentStack.add_child(this._shortcutsTab);
+        // Tab 5: Tools (timer + system monitor)
+        this._toolsTab = buildToolsTab(this);
+
         this._largeContentStack.add_child(this._settingsTab);
+        this._largeContentStack.add_child(this._toolsTab);
         this._largeContainer.add_child(topRow);
         this._largeContainer.add_child(this._largeContentStack);
 
@@ -234,6 +248,14 @@ export default class BrowExtension extends Extension {
         this._stack.add_child(this._batteryBannerContainer);
         this._stack.add_child(this._volumeHudContainer);
 
+        this._noticeHud = buildNoticeHud({
+            onActivate: () => this._activateNotice(),
+            onDismiss: () => this._hudQueue?.dismiss(HudKind.NOTICE),
+        });
+        this._noticeHudContainer = this._noticeHud.box;
+        this._stack.add_child(this._noticeHudContainer);
+        this._stack.add_child(this._timerRing);
+
         Main.layoutManager.uiGroup.add_child(this._hitArea);
 
         this._setupClock();
@@ -241,6 +263,8 @@ export default class BrowExtension extends Extension {
         this._media.startMetaPolling();
         this._setupWeather();
         this._setupVolumeMonitor();
+        this._setupNotifications();
+        this._patchNativeVolumeOsd();
         this._setupAnimations(initialWidth, initialHeight, topMargin);
         this._setupGestures();
         this._setupSettingsBindings();
@@ -575,7 +599,7 @@ export default class BrowExtension extends Extension {
 
             if (!this._isExpanded || !this._autoCollapseEnabled())
                 return Clutter.EVENT_PROPAGATE;
-            if (this._isBatteryBanner || this._isVolumeHud)
+            if (this._isTransientHud())
                 return Clutter.EVENT_PROPAGATE;
 
             const type = event.type();
@@ -688,7 +712,7 @@ export default class BrowExtension extends Extension {
     _onArrowTab(event) {
         if (!this._isExpanded || !this._hitArea?.hover)
             return Clutter.EVENT_PROPAGATE;
-        if (this._isBatteryBanner || this._isVolumeHud)
+        if (this._isTransientHud())
             return Clutter.EVENT_PROPAGATE;
 
         const key = event.get_key_symbol();
@@ -715,11 +739,12 @@ export default class BrowExtension extends Extension {
             this._searchTab,
             this._shortcutsTab,
             this._settingsTab,
+            this._toolsTab,
         ];
     }
 
     _adjacentTab(direction) {
-        const order = this._isPlaying ? [0, 1, 2, 3, 4] : [0, 2, 3, 4];
+        const order = this._isPlaying ? [0, 1, 2, 3, 4, 5] : [0, 2, 3, 4, 5];
         const pos = order.indexOf(this._currentTab);
         const i = pos < 0 ? 0 : pos;
         return order[(i + direction + order.length) % order.length];
@@ -762,7 +787,7 @@ export default class BrowExtension extends Extension {
         if (from === 3 && index !== 3)
             onShortcutsTabHidden(this);
 
-        const duration = 250;
+        const duration = MOTION.TAB_MS;
         const mode = Clutter.AnimationMode.EASE_OUT_QUINT;
         const tabs = this._allTabs();
 
@@ -831,6 +856,8 @@ export default class BrowExtension extends Extension {
 
         const settingsOn = expanded && this._currentTab === 4;
         setSettingsControlsReactive(this, settingsOn);
+
+        setToolsReactive(this, expanded && this._currentTab === 5);
         this._syncIslandKeyFocus();
     }
 
@@ -840,7 +867,7 @@ export default class BrowExtension extends Extension {
         this._topMargin = topMargin;
 
         this._hitArea.connect('notify::hover', () => {
-            if (!this._island || this._isBatteryBanner || this._isVolumeHud)
+            if (!this._island || this._isTransientHud())
                 return;
 
             if (this._hitArea.hover) {
@@ -880,7 +907,7 @@ export default class BrowExtension extends Extension {
         this._island.connect('button-release-event', () => {
             if (!this._island)
                 return Clutter.EVENT_STOP;
-            if (this._isBatteryBanner || this._isVolumeHud)
+            if (this._isTransientHud())
                 return Clutter.EVENT_STOP;
             this._isExpanded = !this._isExpanded;
             if (this._isExpanded) {
@@ -957,10 +984,21 @@ export default class BrowExtension extends Extension {
     }
 
     _updateIslandView() {
+        this._updateIslandViewInner();
+        syncTimerRing(this);
+    }
+
+    _updateIslandViewInner() {
         if (!this._island)
             return;
 
         let targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, volumeOp;
+        const noticeOp = this._isNoticeHud ? 255 : 0;
+
+        if (this._isNoticeHud) {
+            this._animateTo(NOTICE_HUD_WIDTH, Math.max(this._initialHeight, NOTICE_HUD_HEIGHT), 0, 0, 0, 0, 0, noticeOp);
+            return;
+        }
 
         if (this._isVolumeHud) {
             targetWidth = VOLUME_HUD_WIDTH;
@@ -1029,7 +1067,7 @@ export default class BrowExtension extends Extension {
         this._animateTo(targetWidth, targetHeight, quickOp, mediaOp, largeOp, bannerOp, volumeOp);
     }
 
-    _animateTo(targetWidth, targetHeight, quickOpacity, mediaOpacity, largeOpacity, bannerOpacity = 0, volumeOpacity = 0) {
+    _animateTo(targetWidth, targetHeight, quickOpacity, mediaOpacity, largeOpacity, bannerOpacity = 0, volumeOpacity = 0, noticeOpacity = 0) {
         if (!this._island || !this._hitArea)
             return;
 
@@ -1045,6 +1083,7 @@ export default class BrowExtension extends Extension {
             largeOpacity,
             bannerOpacity,
             volumeOpacity,
+            noticeOpacity,
             topMargin: this._topMargin,
             centerX: this._centerX,
             originY: this._originY,
@@ -1057,6 +1096,7 @@ export default class BrowExtension extends Extension {
             this._animTarget.largeOpacity === next.largeOpacity &&
             this._animTarget.bannerOpacity === next.bannerOpacity &&
             this._animTarget.volumeOpacity === next.volumeOpacity &&
+            this._animTarget.noticeOpacity === next.noticeOpacity &&
             this._animTarget.topMargin === next.topMargin &&
             this._animTarget.centerX === next.centerX &&
             this._animTarget.originY === next.originY) {
@@ -1074,7 +1114,7 @@ export default class BrowExtension extends Extension {
             height: hitH,
             x: hitX,
             y: hitY,
-            duration: 350,
+            duration: MOTION.MORPH_MS,
             mode: Clutter.AnimationMode.EASE_OUT_QUINT,
         });
 
@@ -1083,18 +1123,18 @@ export default class BrowExtension extends Extension {
             height: targetHeight,
             x: HIT_PAD_X,
             y: 0,
-            duration: 350,
+            duration: MOTION.MORPH_MS,
             mode: Clutter.AnimationMode.EASE_OUT_QUINT,
         });
 
         this._quickContainer.ease({
             opacity: quickOpacity,
-            duration: 150,
+            duration: MOTION.FADE_FAST_MS,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
         });
         this._mediaQuickContainer.ease({
             opacity: mediaOpacity,
-            duration: 150,
+            duration: MOTION.FADE_FAST_MS,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
         });
 
@@ -1104,7 +1144,7 @@ export default class BrowExtension extends Extension {
         } else {
             this._largeContainer.ease({
                 opacity: largeOpacity,
-                duration: 250,
+                duration: MOTION.TAB_MS,
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             });
         }
@@ -1116,7 +1156,20 @@ export default class BrowExtension extends Extension {
             } else {
                 this._batteryBannerContainer.ease({
                     opacity: bannerOpacity,
-                    duration: 200,
+                    duration: MOTION.FADE_MS,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                });
+            }
+        }
+
+        if (this._noticeHudContainer) {
+            if (noticeOpacity === 0) {
+                this._noticeHudContainer.remove_all_transitions();
+                this._noticeHudContainer.opacity = 0;
+            } else {
+                this._noticeHudContainer.ease({
+                    opacity: noticeOpacity,
+                    duration: MOTION.FADE_MS,
                     mode: Clutter.AnimationMode.EASE_OUT_QUAD,
                 });
             }
@@ -1129,7 +1182,7 @@ export default class BrowExtension extends Extension {
             } else {
                 this._volumeHudContainer.ease({
                     opacity: volumeOpacity,
-                    duration: 200,
+                    duration: MOTION.FADE_MS,
                     mode: Clutter.AnimationMode.EASE_OUT_QUAD,
                 });
             }
@@ -1150,6 +1203,18 @@ export default class BrowExtension extends Extension {
 
     _applyHudActive(active, payload) {
         const wasVolume = this._isVolumeHud;
+        const wasNotice = this._isNoticeHud;
+
+        this._isNoticeHud = active === HudKind.NOTICE;
+        if (this._isNoticeHud) {
+            if (payload)
+                this._noticeHud?.update(payload);
+            this._noticeAction = payload?.action ?? null;
+            this._noticeHud?.setReactive(true);
+        } else if (wasNotice) {
+            this._noticeHud?.setReactive(false);
+            this._noticeAction = null;
+        }
 
         this._isVolumeHud = active === HudKind.VOLUME;
         this._isBatteryBanner = active === HudKind.BATTERY;
@@ -1183,6 +1248,168 @@ export default class BrowExtension extends Extension {
 
         this._animTarget = null;
         this._updateIslandView();
+    }
+
+    // The Shell's own volume OSD duplicates the island HUD. Swallow only the
+    // audio-volume OSDs (brightness and keyboard backlight still show) and
+    // only while the island volume HUD is enabled.
+    _patchNativeVolumeOsd() {
+        const osd = Main.osdWindowManager;
+        if (!osd || typeof osd.show !== 'function')
+            return;
+        const original = osd.show;
+        const self = this;
+        const patched = function (monitorIndex, icon, ...rest) {
+            let isVolume = false;
+            try {
+                const names = icon?.get_names?.() ?? [];
+                isVolume = names.some(n => n.startsWith('audio-volume'));
+            } catch (e) {
+                isVolume = false;
+            }
+            if (isVolume && self._island && self._settings?.get_boolean('show-volume-hud'))
+                return;
+            return original.call(this, monitorIndex, icon, ...rest);
+        };
+        this._osdOriginalShow = original;
+        this._osdPatchedShow = patched;
+        osd.show = patched;
+    }
+
+    _restoreNativeVolumeOsd() {
+        const osd = Main.osdWindowManager;
+        if (osd && this._osdPatchedShow && osd.show === this._osdPatchedShow)
+            osd.show = this._osdOriginalShow;
+        this._osdOriginalShow = null;
+        this._osdPatchedShow = null;
+    }
+
+    _isTransientHud() {
+        return this._isBatteryBanner || this._isVolumeHud || this._isNoticeHud;
+    }
+
+    _showNotice({ title, body, iconName, action = null, holdMs = NOTICE_HUD_MS }) {
+        if (!this._island)
+            return;
+        this._prepareTransientHudChrome();
+        this._hudQueue?.request(HudKind.NOTICE, {
+            payload: { title, body, iconName, action },
+            holdMs,
+        });
+    }
+
+    _activateNotice() {
+        const action = this._noticeAction;
+        this._hudQueue?.dismiss(HudKind.NOTICE);
+        try {
+            action?.();
+        } catch (e) {
+            console.error('Brow notice action failed:', e);
+        }
+    }
+
+    _setupNotifications() {
+        this._notifySettings = null;
+        try {
+            this._notifySettings = new Gio.Settings({ schema_id: 'org.gnome.desktop.notifications' });
+        } catch (e) {
+            this._notifySettings = null;
+        }
+
+        const tray = Main.messageTray;
+        if (!tray)
+            return;
+
+        this._trayAddedId = tray.connect('source-added', (_t, source) => this._watchSource(source));
+        this._trayRemovedId = tray.connect('source-removed', (_t, source) => this._unwatchSource(source));
+        for (const source of tray.getSources?.() ?? [])
+            this._watchSource(source);
+    }
+
+    _watchSource(source) {
+        if (!source || this._notifySourceSignals.has(source))
+            return;
+        try {
+            const id = source.connect('notification-added', (_s, notification) => {
+                this._onNotification(source, notification);
+            });
+            this._notifySourceSignals.set(source, id);
+        } catch (e) {
+            console.error('Brow: cannot watch notification source:', e);
+        }
+    }
+
+    _unwatchSource(source) {
+        const id = this._notifySourceSignals.get(source);
+        if (id == null)
+            return;
+        try {
+            source.disconnect(id);
+        } catch (e) {
+            // ignore
+        }
+        this._notifySourceSignals.delete(source);
+    }
+
+    _onNotification(source, notification) {
+        if (!this._island || !this._settings?.get_boolean('show-notifications'))
+            return;
+        // Respect Do Not Disturb: respect GNOME's banner switch.
+        if (this._notifySettings && !this._notifySettings.get_boolean('show-banners'))
+            return;
+        if (notification?.isMusic)
+            return;
+        // Do not cover the island while the user is working inside it.
+        if (this._isExpanded)
+            return;
+
+        const title = String(notification?.title ?? source?.title ?? '');
+        const body = String(notification?.body ?? '').replace(/\s+/g, ' ').trim();
+        const appName = String(source?.title ?? '');
+        let iconName = null;
+        try {
+            const gicon = notification?.gicon ?? source?.icon;
+            if (gicon?.get_names)
+                iconName = gicon.get_names()[0] ?? null;
+        } catch (e) {
+            iconName = null;
+        }
+
+        this._showNotice({
+            title: title || appName,
+            body: title && appName && body === '' ? appName : body,
+            iconName: iconName || 'preferences-system-notifications-symbolic',
+            action: () => {
+                try {
+                    notification.activate?.();
+                } catch (e) {
+                    // ignore
+                }
+            },
+        });
+    }
+
+    _teardownNotifications() {
+        const tray = Main.messageTray;
+        if (tray) {
+            if (this._trayAddedId)
+                tray.disconnect(this._trayAddedId);
+            if (this._trayRemovedId)
+                tray.disconnect(this._trayRemovedId);
+        }
+        this._trayAddedId = 0;
+        this._trayRemovedId = 0;
+        for (const [source, id] of this._notifySourceSignals ?? []) {
+            try {
+                source.disconnect(id);
+            } catch (e) {
+                // ignore
+            }
+        }
+        this._notifySourceSignals?.clear();
+        this._notifySettings = null;
+        this._noticeHud?.destroy();
+        this._noticeHud = null;
     }
 
     _isOnAc(state) {
@@ -1468,6 +1695,7 @@ export default class BrowExtension extends Extension {
             this._largeContainer,
             this._batteryBannerContainer,
             this._volumeHudContainer,
+            this._noticeHudContainer,
             ...this._allTabs(),
         ];
         for (const actor of actors) {
@@ -1529,6 +1757,9 @@ export default class BrowExtension extends Extension {
         this._hudQueue?.clear();
         this._hudQueue = null;
         this._teardownVolumeMonitor();
+        this._teardownNotifications();
+        this._restoreNativeVolumeOsd();
+        destroyTools(this);
 
         if (this._displayDevice) {
             if (this._batterySignalId) {

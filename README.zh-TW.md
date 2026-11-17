@@ -58,6 +58,14 @@ UUID：`brow@jettakarn`。
 
 ![Charging](previews/charging.gif)
 
+### 通知
+
+收到桌面通知時，島會顯示圖示、標題和第一行，約 4.5 秒。左鍵點一下執行通知動作，右鍵略過。勿擾開啟、島展開中、以及音樂通知都不會顯示。優先順序在音量與電池之間。島的音量條開啟時，Shell 內建的音量浮窗會被隱藏。
+
+### 工具
+
+最後一頁有計時器和簡單的系統監控。可選 5、15、25 或 45 分鐘。計時中，若島是收起且閒置的，右緣會出現一圈細環倒數。時間到，島會顯示「Timer done」橫幅。監控顯示 CPU 負載與短暫歷史線、記憶體用量和溫度，只在該頁開啟時才讀取 `/proc` 與 `/sys`，其餘時間不耗資源。
+
 ### 快捷
 
 圓形圖示排成蜂巢。靠近中心的較大。拖曳可平移，放開後還會滑一段。點一下開啟該應用程式或網站，並關閉島。關閉島或離開這一頁，格子回到正中間。
@@ -71,6 +79,17 @@ UUID：`brow@jettakarn`。
 - 需要網路才能取得天氣（IP 定位與 [Open-Meteo](https://open-meteo.com/)）和網站圖示
 
 # 安裝
+
+### 從 Release 安裝（建議）
+
+到[最新 Release](https://github.com/jettakarn/brow-gnome-extension/releases/latest) 下載 `brow@jettakarn.shell-extension.zip`，然後：
+
+```sh
+gnome-extensions install --force brow@jettakarn.shell-extension.zip
+gnome-extensions enable brow@jettakarn
+```
+
+### 從原始碼安裝
 
 ```sh
 git clone https://github.com/jettakarn/brow-gnome-extension.git
@@ -108,6 +127,7 @@ gnome-extensions enable brow@jettakarn
 - **時鐘** 用 24 小時或 12 小時。
 - **音量** 顯示或隱藏音量條。
 - **電池** 顯示或隱藏充電與低電量橫幅。
+- **通知** 顯示或隱藏島上的通知橫幅。
 - **低電量** 是 15%、20% 或 25%。預設 20%。放電中降到這個門檻時出現一次，充到門檻以上後會重設。
 
 蜂巢在偏好設定頁。打開 **擴充功能**，選擇 **Brow**，再進 **Honeycomb**。可以新增、刪除、調整順序。每一點是應用程式或網站。

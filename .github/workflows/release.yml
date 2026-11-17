@@ -1,0 +1,24 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y gnome-shell-common libglib2.0-dev-bin gnome-shell
+      - name: Pack
+        run: bash tools/pack.sh dist
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/brow@jettakarn.shell-extension.zip
+          generate_release_notes: true

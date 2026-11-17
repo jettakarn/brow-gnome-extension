@@ -35,7 +35,7 @@ UUID: `brow@jettakarn`.
 - A notch the height of the GNOME top bar. Hover peeks. Click opens the island.
 - Overview: clock, date, weather, and battery.
 - Search. Type an address or a query and press Enter. The default browser opens, and the island closes and clears.
-- Scroll or swipe cycles the tabs and wraps around. While audio is playing the order is Overview, Media, Search, Shortcuts, Settings. Otherwise Media is skipped.
+- Scroll or swipe cycles the tabs and wraps around. While audio is playing the order is Overview, Media, Search, Shortcuts, Settings, Tools. Otherwise Media is skipped.
 - Overlays do not stack. The volume bar takes the island from a battery banner. A timed banner that was interrupted comes back if its time has not run out.
 
 ### Media
@@ -58,6 +58,14 @@ Charging and low-battery banners. Each holds for about three seconds, then the i
 
 ![Charging](previews/charging.gif)
 
+### Notifications
+
+When a desktop notification arrives, the island shows its icon, title, and first line for about four and a half seconds. Click it to open the notification's action, right-click to dismiss it. It is skipped while Do Not Disturb is on, while the island is open, and for music. It sits between volume and battery in the overlay order. The Shell's own volume pop-up is hidden while the island volume bar is on.
+
+### Tools
+
+The last page has a timer and a small system monitor. Pick 5, 15, 25, or 45 minutes. While the timer runs and the island is closed and idle, a thin ring at the right edge counts down. When it ends, the island shows a "Timer done" banner. The monitor shows CPU load with a short history line, memory use, and temperature. It reads `/proc` and `/sys` only while that page is open, so it costs nothing the rest of the time.
+
 ### Shortcuts
 
 Circular icons in a honeycomb. Dots near the center are larger. Drag to pan, and the grid keeps a little speed after you let go. A click opens that app or site and closes the island. Closing the island, or leaving the page, returns the grid to the center.
@@ -71,6 +79,17 @@ Each dot is an application or a website, chosen in the extension preferences. We
 - Network access for weather (IP geolocation and [Open-Meteo](https://open-meteo.com/)) and for website icons
 
 # Install
+
+### From a release (recommended)
+
+Download `brow@jettakarn.shell-extension.zip` from the [latest release](https://github.com/jettakarn/brow-gnome-extension/releases/latest), then:
+
+```sh
+gnome-extensions install --force brow@jettakarn.shell-extension.zip
+gnome-extensions enable brow@jettakarn
+```
+
+### From source
 
 ```sh
 git clone https://github.com/jettakarn/brow-gnome-extension.git
@@ -108,6 +127,7 @@ Display, volume, and battery are a tab in the island.
 - **Clock** is 24-hour or 12-hour.
 - **Volume** shows or hides the volume bar.
 - **Battery** shows or hides the charging and low-battery banners.
+- **Notifications** shows or hides notification banners in the island.
 - **Low battery** is 15%, 20%, or 25%. The default is 20%. The banner appears once when the level drops to that threshold while discharging, and it resets after charging above it.
 
 The honeycomb is a preferences page. Open **Extensions**, choose **Brow**, then **Honeycomb**. Add, remove, and reorder dots. Each one is an application or a website.
